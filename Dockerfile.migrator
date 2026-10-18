@@ -1,0 +1,6 @@
+FROM payment-base
+
+COPY alembic.ini ./
+COPY alembic ./alembic
+
+CMD ["alembic", "upgrade", "head"]

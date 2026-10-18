@@ -1,0 +1,68 @@
+x-service: &service
+  env_file:
+    - .env
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB__USER}
+      POSTGRES_PASSWORD: ${DB__PASSWORD}
+      POSTGRES_DB: ${DB__NAME}
+    ports:
+      - "${DB__PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT__USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT__PASSWORD}
+    ports:
+      - "${RABBIT__PORT}:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  migrator:
+    <<: *service
+    image: payment-migrator
+    environment:
+      DB__HOST: postgres
+      RABBIT__HOST: rabbitmq
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *service
+    image: payment-api
+    environment:
+      DB__HOST: postgres
+      RABBIT__HOST: rabbitmq
+    ports:
+      - "${API__PORT}:${API__PORT}"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+  worker:
+    <<: *service
+    image: payment-worker
+    environment:
+      DB__HOST: postgres
+      RABBIT__HOST: rabbitmq
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
